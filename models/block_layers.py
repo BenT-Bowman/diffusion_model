@@ -106,6 +106,9 @@ class SelfAttention(nn.Module):
 
 
 class UpConv(nn.Module):
+    """
+    Not currently used
+    """
     def __init__(self, in_channels, out_channels, activation_function="ReLU"):
         super(UpConv, self).__init__()
         if activation_function == "ReLU":
@@ -178,11 +181,11 @@ class ConvBlock(nn.Module):
         shortcut = self.shortcut(x)
 
         out = self.conv2d_0(x)
-        out = out + time_emb
+        # out = out + time_emb
         out = self.conv2d_1(out)
-        out = out + time_emb
+        # out = out + time_emb
         out = self.conv2d_2(out)
-        out = out + time_emb
+        # out = out + time_emb
         out = self.conv2d_3(out)
         out = out + time_emb
 
@@ -192,39 +195,54 @@ class ConvBlock(nn.Module):
 
         return out
 
+# class UpBlock(nn.Module):
+#     """
+#     The Upsampling routine condensened into a single block. (I'll be damned if I'm going to write all of these everytime I want to increase complexity)
+#     Uses AttentionBlock and ConvBlock
+#     """
+#     def __init__(self, in_channels, out_channels, time_embed_dim, activation_function="ReLU"):
+#         super(UpBlock, self).__init__()
+#         self.out_channels = out_channels
+#         if in_channels == out_channels:
+#             self.mid_channels = out_channels
+#         else:
+#             self.mid_channels = out_channels//2
+#         self.Up = UpConv(in_channels=in_channels, out_channels=out_channels)
+#         self.Att = AttentionBlock(channels_x=out_channels, channels_g=out_channels, out_channels=self.mid_channels)
+#         self.conv = ConvBlock(in_channels=in_channels, out_channels=out_channels, embed_dim=time_embed_dim, activation_function=activation_function)
+
+#     def forward(self, gate, skip_connection, t):
+#         assert skip_connection.shape[-3] == self.out_channels
+#         d = self.Up(gate)
+#         s = self.Att(gate=d, skip_connection=skip_connection)
+#         d = torch.cat((s, d), dim=1) # TODO: Consider other strategies of combining these two
+#         d = self.conv(d, t)
+#         return d
+
 class UpBlock(nn.Module):
-    """
-    The Upsampling routine condensened into a single block. (I'll be damned if I'm going to write all of these everytime I want to increase complexity)
-    Uses AttentionBlock and ConvBlock
-    """
     def __init__(self, in_channels, out_channels, time_embed_dim, activation_function="ReLU"):
         super(UpBlock, self).__init__()
-        self.out_channels = out_channels
-        if in_channels == out_channels:
-            self.mid_channels = out_channels
-        else:
-            self.mid_channels = out_channels//2
-        self.Up = UpConv(in_channels=in_channels, out_channels=out_channels)
-        self.Att = AttentionBlock(channels_x=out_channels, channels_g=out_channels, out_channels=self.mid_channels)
-        self.conv = ConvBlock(in_channels=in_channels, out_channels=out_channels, embed_dim=time_embed_dim, activation_function=activation_function)
-
-    def forward(self, gate, skip_connection, t):
-        assert skip_connection.shape[-3] == self.out_channels
-        d = self.Up(gate)
-        s = self.Att(gate=d, skip_connection=skip_connection)
-        d = torch.cat((s, d), dim=1) # TODO: Consider other strategies of combining these two
-        d = self.conv(d, t)
-        return d
-
+        self.up = nn.ConvTranspose2d(in_channels, out_channels, kernel_size=2, stride=2)
+        self.conv_block = ConvBlock(in_channels, out_channels, time_embed_dim, activation_function)
+        self.attention = SelfAttention(out_channels)
+    
+    def forward(self, x, skip_x, t):
+        x = self.up(x)
+        x = torch.cat([x, skip_x], dim=1)
+        x = self.conv_block(x, t)
+        x = self.attention(x)
+        return x
 
 class BottleNeckBlock(nn.Module):
     def __init__(self, in_channels, out_channels, time_embed_dim, activation_function="ReLU"):
         super(BottleNeckBlock, self).__init__()
-        raise NotImplementedError()
+        self.conv = ConvBlock(in_channels, out_channels, time_embed_dim, activation_function)
+        self.attention = SelfAttention(out_channels)
 
-    def forward(self, gate, skip_connection, t):
-        raise NotImplementedError()
-
+    def forward(self, x, t):
+        out = self.conv(x, t)
+        out = self.attention(out)
+        return out
         
 
 

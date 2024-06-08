@@ -66,17 +66,20 @@ class UNet(nn.Module):
         super(UNet, self).__init__()
         self.MaxPool  = nn.MaxPool2d(kernel_size = 2)
 
-        encoder_activation = "ReLU"
+        encoder_activation = "GELU"
 
         ## Encoders
         self.encoder1 = ConvBlock(in_channels, 64, time_embed_dim, encoder_activation)
         self.encoder2 = ConvBlock(64, 128, time_embed_dim, encoder_activation)
-        # self.encoder3 = ConvBlock(128, 256, time_embed_dim, encoder_activation)
-        self.bot = BottleNeckBlock(128, 128, time_embed_dim, encoder_activation)
 
-        decoder_activation = "ReLU"
-        # self.decoder3 = UpBlock(256, 128, time_embed_dim, decoder_activation)
-        self.decoder2 = UpBlock(128, 64, time_embed_dim, decoder_activation)
+        bottleneck_activation = "SiLU"
+
+        self.bottleneck1 = BottleNeckBlock(128, 256, time_embed_dim, bottleneck_activation)
+        self.bottleneck2 = BottleNeckBlock(256, 256, time_embed_dim, bottleneck_activation)
+
+        decoder_activation = "SiLU"
+        self.decoder2 = UpBlock(256, 128, time_embed_dim, decoder_activation)
+        self.decoder1 = UpBlock(128, 64,  time_embed_dim, decoder_activation)
         
         ## Final
         self.final = nn.Conv2d(64, in_channels, kernel_size=1)
@@ -85,14 +88,15 @@ class UNet(nn.Module):
 
     def forward(self, x, t):
         x1 = self.encoder1(x, t)
-        # print(x1.shape)
+        x2 = self.encoder2(self.MaxPool(x1), t)
 
-        x2 = self.MaxPool(x1)
-        x2 = self.encoder2(x2, t)
+        b = self.bottleneck1(self.MaxPool(x2), t)
+        b = self.bottleneck2(b, t)
+
+        out = self.decoder2(b, x2, t)
+        out = self.decoder1(out, x1, t)
 
         
-
-        out = self.decoder2(x2, x1, t)
         out = self.final(out)
         out = self.tanh(out)
 
